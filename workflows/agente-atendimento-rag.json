@@ -1,0 +1,158 @@
+{
+  "name": "Agente de Atendimento com RAG - Portfolio",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agente-rag",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-1",
+      "name": "Webhook - Nova Mensagem",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-900, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"id": "a1", "name": "mensagem", "value": "={{ $json.body.message || $json.body.text || $json.message }}", "type": "string"},
+            {"id": "a2", "name": "telefone", "value": "={{ $json.body.phone || $json.body.phoneNumber || '' }}", "type": "string"},
+            {"id": "a3", "name": "nome", "value": "={{ $json.body.name || '' }}", "type": "string"}
+          ]
+        }
+      },
+      "id": "set-1",
+      "name": "Normalizar Mensagem",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-680, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "Authorization", "value": "={{ 'Bearer ' + $env.OPENAI_API_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'text-embedding-3-small', input: $json.mensagem } }}"
+      },
+      "id": "query-embedding",
+      "name": "Gerar Embedding da Pergunta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-460, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/match_documents' }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"},
+          {"name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { query_embedding: $json.data[0].embedding, match_count: 4 } }}"
+      },
+      "id": "rag-search",
+      "name": "Consultar Base RAG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst docs = items.map(i => i.json);\nconst contexto = docs.map((d, idx) => `[${idx+1}] ${d.content || d.text || JSON.stringify(d)}`).join('\\n\\n');\nreturn [{json:{contexto, encontrou_contexto: contexto.trim().length > 20}}];"
+      },
+      "id": "code-context",
+      "name": "Montar Contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [20, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [{
+            "id": "if1",
+            "leftValue": "={{ $json.encontrou_contexto }}",
+            "rightValue": true,
+            "operator": {"type": "boolean", "operation": "true", "singleValue": true}
+          }],
+          "combinator": "and"
+        }
+      },
+      "id": "if-context",
+      "name": "Contexto encontrado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "Authorization", "value": "={{ 'Bearer ' + $env.OPENROUTER_API_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'openai/gpt-4.1-mini', messages: [ { role: 'system', content: 'Você é um agente empresarial. Responda apenas com base no CONTEXTO recuperado. Não invente preços, prazos, políticas ou condições. Se o contexto for insuficiente, diga que a informação precisa ser confirmada pelo atendimento humano.' }, { role: 'user', content: 'PERGUNTA: ' + $('Normalizar Mensagem').item.json.mensagem + '\\n\\nCONTEXTO:\\n' + $json.contexto } ], temperature: 0.2 } }}"
+      },
+      "id": "llm",
+      "name": "Gerar Resposta com LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, -100]
+    },
+    {
+      "parameters": {
+        "assignments": {"assignments": [
+          {"id": "fb1", "name": "resposta", "value": "Não encontrei essa informação com segurança na base de conhecimento. Essa solicitação precisa ser confirmada pelo atendimento humano.", "type": "string"},
+          {"id": "fb2", "name": "handoff_humano", "value": true, "type": "boolean"}
+        ]}
+      },
+      "id": "fallback",
+      "name": "Fallback / Handoff Humano",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [520, 140]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ $json }}"},
+      "id": "respond",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [820, 0]
+    }
+  ],
+  "connections": {
+    "Webhook - Nova Mensagem": {"main": [[{"node": "Normalizar Mensagem", "type": "main", "index": 0}]]},
+    "Normalizar Mensagem": {"main": [[{"node": "Gerar Embedding da Pergunta", "type": "main", "index": 0}]]},
+    "Gerar Embedding da Pergunta": {"main": [[{"node": "Consultar Base RAG", "type": "main", "index": 0}]]},
+    "Consultar Base RAG": {"main": [[{"node": "Montar Contexto", "type": "main", "index": 0}]]},
+    "Montar Contexto": {"main": [[{"node": "Contexto encontrado?", "type": "main", "index": 0}]]},
+    "Contexto encontrado?": {"main": [
+      [{"node": "Gerar Resposta com LLM", "type": "main", "index": 0}],
+      [{"node": "Fallback / Handoff Humano", "type": "main", "index": 0}]
+    ]},
+    "Gerar Resposta com LLM": {"main": [[{"node": "Responder Webhook", "type": "main", "index": 0}]]},
+    "Fallback / Handoff Humano": {"main": [[{"node": "Responder Webhook", "type": "main", "index": 0}]]}
+  },
+  "pinData": {},
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "tags": []
+}
