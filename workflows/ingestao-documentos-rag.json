@@ -1,0 +1,88 @@
+{
+  "name": "Ingestao de Documentos para RAG - Portfolio",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual",
+      "name": "Iniciar Ingestão",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-700, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"id": "doc1", "name": "documento", "value": "Cole aqui o texto extraído do Google Drive ou conecte um node Google Drive antes desta etapa.", "type": "string"},
+            {"id": "doc2", "name": "origem", "value": "documento-exemplo.md", "type": "string"}
+          ]
+        }
+      },
+      "id": "setdoc",
+      "name": "Documento de Entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-480, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.documento || '';\nconst size = 800;\nconst overlap = 120;\nconst chunks=[];\nfor (let i=0;i<text.length;i+=size-overlap){\n  const content=text.slice(i,i+size).trim();\n  if(content) chunks.push({json:{content, metadata:{source:$json.origem, chunk:chunks.length}}});\n}\nreturn chunks;"
+      },
+      "id": "chunk",
+      "name": "Dividir em Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "Authorization", "value": "={{ 'Bearer ' + $env.OPENAI_API_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'text-embedding-3-small', input: $json.content } }}"
+      },
+      "id": "embed",
+      "name": "Gerar Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [20, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/documents' }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"},
+          {"name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"},
+          {"name": "Prefer", "value": "return=minimal"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $('Dividir em Chunks').item.json.content, metadata: $('Dividir em Chunks').item.json.metadata, embedding: $json.data[0].embedding } }}"
+      },
+      "id": "store",
+      "name": "Salvar no Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 0]
+    }
+  ],
+  "connections": {
+    "Iniciar Ingestão": {"main": [[{"node": "Documento de Entrada", "type": "main", "index": 0}]]},
+    "Documento de Entrada": {"main": [[{"node": "Dividir em Chunks", "type": "main", "index": 0}]]},
+    "Dividir em Chunks": {"main": [[{"node": "Gerar Embedding", "type": "main", "index": 0}]]},
+    "Gerar Embedding": {"main": [[{"node": "Salvar no Supabase", "type": "main", "index": 0}]]}
+  },
+  "pinData": {},
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "tags": []
+}
