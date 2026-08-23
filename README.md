@@ -24,7 +24,27 @@ A solução foi estruturada para:
 
 ## 🧩 Arquitetura
 
-O projeto é dividido em dois fluxos independentes.
+O projeto é dividido em dois fluxos independentes: **ingestão da base de conhecimento** e **atendimento com RAG**.
+
+### Visão visual da arquitetura
+
+```mermaid
+flowchart LR
+    A[Google Drive / Documentos] --> B[n8n - Ingestão]
+    B --> C[Extração de texto]
+    C --> D[Chunking]
+    D --> E[Embeddings]
+    E --> F[(Supabase / pgvector)]
+
+    U[Usuário / WhatsApp / Webhook] --> N[n8n - Atendimento]
+    N --> Q[Embedding da pergunta]
+    Q --> F
+    F --> R[Trechos relevantes]
+    R --> L[LLM]
+    L --> O{Contexto suficiente?}
+    O -->|Sim| S[Resposta contextualizada]
+    O -->|Não| H[Handoff humano]
+```
 
 ### 1. Ingestão da base de conhecimento
 
