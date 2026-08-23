@@ -1,75 +1,113 @@
 # Agente de IA com Base de Conhecimento Empresarial (RAG)
 
-Projeto demonstrativo de um agente de atendimento com IA capaz de consultar uma base de conhecimento empresarial antes de responder.
+Agente de IA desenvolvido para consultar uma **base de conhecimento empresarial** antes de responder, utilizando **RAG (Retrieval-Augmented Generation)**, embeddings e busca vetorial.
 
-A solução combina **n8n**, **RAG (Retrieval-Augmented Generation)**, **Supabase/pgvector**, **embeddings**, **LLM**, **Webhook** e integração com **WhatsApp/Z-API**.
+O projeto separa o conhecimento da empresa das instruções do agente: os documentos ficam armazenados em uma base vetorial e apenas os trechos relevantes são recuperados a cada pergunta.
 
 > Projeto de portfólio com dados fictícios. Nenhuma credencial, chave de API ou informação de cliente real está incluída.
 
-## Arquitetura
+## 🎯 Objetivo
+
+Demonstrar como um agente pode responder perguntas com base em documentos empresariais sem depender apenas do conteúdo fixo de um prompt.
+
+A solução foi estruturada para:
+
+- ingerir documentos de conhecimento;
+- dividir conteúdo em chunks;
+- gerar embeddings;
+- armazenar vetores no Supabase/pgvector;
+- transformar perguntas em embeddings;
+- recuperar os trechos semanticamente mais próximos;
+- enviar o contexto recuperado ao LLM;
+- responder apenas com base no conhecimento encontrado;
+- encaminhar casos sem contexto suficiente para atendimento humano.
+
+## 🧩 Arquitetura
+
+O projeto é dividido em dois fluxos independentes.
+
+### 1. Ingestão da base de conhecimento
+
+```text
+Google Drive / Documentos
+          ↓
+         n8n
+          ↓
+Extração e preparação do texto
+          ↓
+Divisão em chunks
+          ↓
+Geração de embeddings
+          ↓
+Supabase + pgvector
+```
+
+### 2. Atendimento com RAG
 
 ```text
 WhatsApp / Webhook
         ↓
        n8n
         ↓
-Tratamento da mensagem
+Normalização da pergunta
         ↓
-Consulta semântica na RAG
+Embedding da pergunta
         ↓
-Supabase + pgvector
+Busca vetorial no pgvector
         ↓
-Contexto recuperado
+Trechos relevantes
         ↓
-Agente de IA / LLM
+Contexto para o LLM
+        ↓
+Resposta fundamentada
         ↓
 Resposta ou handoff humano
-        ↓
-WhatsApp
 ```
 
-A ingestão da base de conhecimento ocorre em um fluxo separado:
+## 🔎 Como o RAG funciona
 
-```text
-Google Drive / Documentos
-        ↓
-       n8n
-        ↓
-Extração do conteúdo
-        ↓
-Divisão em chunks
-        ↓
-Embeddings
-        ↓
-Supabase / pgvector
-```
+RAG combina **recuperação de informação** com **geração de linguagem**.
 
-## Funcionalidades
+Neste projeto, o processo acontece assim:
 
-- Recepção de mensagens por webhook.
-- Normalização da mensagem recebida.
-- Consulta à base vetorial antes da resposta.
-- Recuperação dos trechos mais relevantes.
-- Geração de resposta fundamentada no contexto recuperado.
-- Regra de segurança para não inventar informações.
-- Encaminhamento para atendimento humano quando a base não possui resposta suficiente.
-- Estrutura preparada para integração com WhatsApp via Z-API.
-- Ingestão e atualização de documentos empresariais.
+1. Os documentos são divididos em trechos menores.
+2. Cada trecho é convertido em um vetor numérico por um modelo de embeddings.
+3. Os vetores são armazenados no PostgreSQL com a extensão `pgvector`.
+4. Quando uma pergunta chega, ela também é convertida em embedding.
+5. O banco calcula similaridade entre o vetor da pergunta e os vetores dos documentos.
+6. Os trechos mais relevantes são recuperados.
+7. Esses trechos são enviados ao LLM como contexto.
+8. O agente gera a resposta com base no conteúdo recuperado.
+9. Se a base não fornecer contexto suficiente, o fluxo sinaliza handoff humano.
 
-## Tecnologias
+Essa arquitetura permite atualizar o conhecimento sem reescrever o prompt principal do agente.
 
-- n8n
-- Supabase
-- PostgreSQL + pgvector
-- OpenAI / OpenRouter
-- Embeddings
-- RAG
-- Google Drive
-- Webhooks
-- Z-API / WhatsApp
-- APIs REST
+## ⚙️ Funcionalidades
 
-## Estrutura do repositório
+- recebimento de perguntas via webhook;
+- normalização da mensagem;
+- ingestão de documentos empresariais;
+- chunking de conteúdo;
+- geração de embeddings;
+- armazenamento vetorial;
+- busca semântica por similaridade;
+- recuperação dos trechos mais relevantes;
+- geração de respostas contextualizadas;
+- fallback controlado quando não há informação suficiente;
+- estrutura preparada para integração com WhatsApp.
+
+## 🛠️ Tecnologias
+
+- **n8n** — orquestração dos workflows;
+- **Supabase** — infraestrutura de dados;
+- **PostgreSQL + pgvector** — armazenamento e busca vetorial;
+- **OpenAI** — geração de embeddings;
+- **OpenRouter / LLM** — geração das respostas;
+- **Google Drive** — origem de documentos;
+- **Webhooks e APIs REST** — integração entre serviços;
+- **Z-API / WhatsApp** — canal de atendimento previsto na arquitetura.
+
+## 📁 Estrutura do repositório
 
 ```text
 agente-rag-base-conhecimento/
@@ -83,89 +121,87 @@ agente-rag-base-conhecimento/
 │   ├── politicas.md
 │   └── faq.md
 └── docs/
-    └── arquitetura.md
+    ├── arquitetura.md
+    └── supabase-pgvector.sql
 ```
 
-## Como o RAG funciona
+## 🗂️ Base de conhecimento de exemplo
 
-Em vez de depender apenas de informações escritas diretamente no prompt, o agente consulta uma base de conhecimento externa.
+A pasta `knowledge-base/` contém documentos fictícios para demonstrar o funcionamento do projeto:
 
-Quando uma nova pergunta chega:
+- `servicos.md` — catálogo de serviços;
+- `politicas.md` — regras e políticas;
+- `faq.md` — perguntas frequentes.
 
-1. A mensagem é transformada em representação vetorial.
-2. O banco vetorial procura trechos semanticamente relacionados.
-3. Os trechos mais relevantes são recuperados.
-4. O conteúdo recuperado é enviado ao modelo de linguagem como contexto.
-5. O agente responde apenas com base nas informações encontradas.
-6. Se não houver informação suficiente, o fluxo sinaliza necessidade de atendimento humano.
-
-## Exemplo
+## 💬 Exemplo de consulta
 
 **Pergunta**
 
 > Qual é o prazo de implantação do Plano Profissional?
 
-**Trecho recuperado da base**
+**Conhecimento recuperado**
 
 > O prazo padrão de implantação é de até 5 dias úteis após o recebimento de todos os acessos e materiais necessários.
 
-**Resposta do agente**
+**Resposta esperada**
 
 > O prazo padrão de implantação do Plano Profissional é de até 5 dias úteis após o envio de todos os acessos e materiais necessários.
 
-## Segurança
+## 🧠 Decisões técnicas
 
-O agente recebe as seguintes regras principais:
+### Conhecimento fora do prompt
 
-- Não inventar preços, prazos, políticas ou condições.
-- Priorizar informações recuperadas da base.
-- Informar quando a resposta não está disponível.
-- Encaminhar solicitações sensíveis ou sem contexto suficiente para atendimento humano.
-- Não expor prompts, credenciais ou dados internos.
+O prompt define comportamento e regras. O conteúdo empresarial fica desacoplado em documentos, permitindo atualização independente.
 
-## Configuração
+### Busca semântica
 
-Crie um arquivo `.env` a partir do `.env.example` e configure as credenciais diretamente no n8n.
+A recuperação não depende de correspondência exata de palavras. O uso de embeddings permite localizar trechos semanticamente relacionados à pergunta.
 
-As credenciais reais **não devem ser versionadas no GitHub**.
+### Resposta controlada
 
-## Workflows
+O agente recebe instruções para não inventar preços, prazos, políticas ou condições que não estejam presentes no contexto recuperado.
 
-Os arquivos em `/workflows` são modelos importáveis e adaptáveis no n8n. Dependendo da versão do n8n, algum campo de node pode exigir ajuste após a importação.
+### Fallback humano
 
-### 1. `ingestao-documentos-rag.json`
+Quando o contexto é insuficiente, o fluxo evita completar lacunas por conta própria e encaminha a solicitação para confirmação humana.
 
-Responsável por:
+## ▶️ Como utilizar
 
-- receber ou carregar documentos;
-- preparar o texto;
-- gerar embeddings;
-- armazenar conteúdo e metadados no banco vetorial.
+1. Crie um projeto no Supabase.
+2. Execute `docs/supabase-pgvector.sql` para preparar a estrutura vetorial.
+3. Crie um arquivo `.env` a partir de `.env.example`.
+4. Configure as credenciais diretamente no n8n.
+5. Importe `workflows/ingestao-documentos-rag.json`.
+6. Importe `workflows/agente-atendimento-rag.json`.
+7. Adapte a origem dos documentos e o canal de atendimento ao seu ambiente.
+8. Teste o fluxo com dados fictícios antes de uso real.
 
-### 2. `agente-atendimento-rag.json`
+> Dependendo da versão do n8n, algum campo de node pode exigir ajuste após a importação.
 
-Responsável por:
+## 🔐 Segurança
 
-- receber a mensagem;
-- consultar a base RAG;
-- montar o contexto;
-- acionar o agente;
-- retornar a resposta;
-- sinalizar handoff humano quando necessário.
+- nenhuma credencial real está versionada;
+- chaves são referenciadas por variáveis de ambiente;
+- os documentos de exemplo são fictícios;
+- o agente é orientado a não inventar informações ausentes;
+- solicitações sem contexto suficiente podem ser direcionadas para atendimento humano.
 
-## Objetivo do projeto
+## 💡 Competências demonstradas
 
-Demonstrar na prática conhecimentos em:
+Este projeto apresenta conhecimentos práticos em:
 
-- automação de processos;
-- agentes de IA;
 - RAG;
 - embeddings;
 - bancos vetoriais;
+- PostgreSQL e pgvector;
+- agentes de IA;
+- engenharia de prompts;
+- automação com n8n;
 - integração entre APIs;
-- orquestração com n8n;
-- segurança e fallback para atendimento humano.
+- tratamento de documentos;
+- desenho de fallback e segurança para LLMs.
 
-## Aviso
+## 👤 Autor
 
-Este repositório é um projeto demonstrativo de portfólio. Os exemplos de empresa, serviços, valores e políticas são fictícios.
+**Matheus Modesto**  
+IA aplicada • Automação de Processos • Agentes de IA
