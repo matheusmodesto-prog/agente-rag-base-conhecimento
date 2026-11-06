@@ -28,6 +28,10 @@ O projeto é dividido em dois fluxos independentes: **ingestão da base de conhe
 
 ### Visão visual da arquitetura
 
+![Arquitetura do agente RAG: ingestão da base e atendimento com recuperação semântica](docs/arquitetura-agente-rag.png)
+
+O diagrama apresenta os dois fluxos principais e o compartilhamento da base vetorial no Supabase/pgvector.
+
 ```mermaid
 flowchart LR
     A[Google Drive / Documentos] --> B[n8n - Ingestão]
